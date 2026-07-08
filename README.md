@@ -28,9 +28,13 @@
 
 | 요인 | 값 |
 |---|---|
-| 맵 커버리지 밖 쿼리 (60개) | 거절률 90% — "모르는 곳"에 None 반환이 정답 |
-| run1/run2 GT 등록 어긋남 | 회전 0.27°, 평행이동 0.21m (시스템 밖 요인) |
-| **GT 정렬 후 실질 성능** | **성공 73.8%, 중앙값 12.2cm** (커버 영역 내 추정 반환분) |
+| 맵 커버리지 밖 쿼리 (60개) | 대부분 거절 — "모르는 곳"에 None 반환이 정답 |
+| run1/run2 GT 등록 어긋남 | 회전 ~0.2°, 평행이동 ~0.21m (시스템 밖 요인) |
+| **GT 정렬 후 실질 성능** | **성공 ~73%, 중앙값 11.3cm** (커버 영역 내 추정 반환분) |
+
+남은 실패의 지배 요인은 핸드헬드 촬영 특성이다 — 보행자가 바닥·천장을
+보는 순간, 자기 다리·빈 벽 클로즈업 등 어떤 시스템도 측위할 수 없는
+쿼리가 다수. 수평 고정 카메라(로봇) 배치에서는 발생하지 않는 조건.
 
 ![크로스-run 커버리지](assets/crossrun_coverage.png)
 
@@ -75,10 +79,44 @@ top-k 후보의 대응을 한 번에 합치면 비슷하게 생긴 다른 장소
 오염시킨다 (실제로 4m 오정합 발생). 후보마다 PnP를 따로 풀고 인라이어 최다
 결과를 채택 — alias는 인라이어 경쟁에서 자연 탈락한다.
 
-### 4. 정직한 실패
+### 4. 가이드 재매칭 (2단계 PnP)
+
+1차 PnP로 대략적 포즈가 나오면, top-k 후보 전체의 3D점을 쿼리에 투영해
+"보여야 할 위치" 반경 내에서 디스크립터 재대응 → 2차 PnP.
+실측 인라이어 75 → 131. 경로에서 벗어난 쿼리일수록 이득이 크다.
+
+### 5. 정직한 실패
 
 인라이어가 기준 미달이면 틀린 포즈 대신 None을 반환한다. 크로스-run에서
-맵 밖 쿼리의 90%를 거절한 것이 이 설계의 검증이다.
+맵 밖 쿼리 대부분을 거절한 것이 이 설계의 검증이다.
+
+## 사용 (API)
+
+맵(DB)은 카메라 독립적 — 월드 3D점+디스크립터만 저장하므로, 맵을 만든
+카메라(어안)와 위치를 묻는 카메라(임의 핀홀)가 달라도 된다.
+
+```python
+# Python API — 모델·DB 1회 로드 후 재사용 (쿼리당 ~0.6초, CPU)
+from src.reloc import Relocalizer
+r = Relocalizer('config.yaml')
+res = r.localize('photo.jpg')                    # 데이터셋 어안 (config 캘리브)
+res = r.localize(img_bgr, K=K_3x3, dist=[...])   # 임의 핀홀 + 클라이언트 캘리브
+# 성공: {'ok': True, 'xyz': [...], 'quat': [...], 'inliers': N}
+# 실패: {'ok': False, 'reason': ...}  ← 틀린 포즈를 반환하지 않는다
+```
+
+```bash
+# CLI
+.venv/bin/python -m src.reloc photo.png
+
+# HTTP 서버
+.venv/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000
+curl -F "image=@photo.jpg" http://localhost:8000/localize
+curl -F "image=@photo.jpg" \
+     -F "intrinsics=615.0,615.0,320.0,240.0" \
+     -F "dist=0.1,-0.2,0,0,0" \
+     http://localhost:8000/localize             # 클라이언트 캘리브 동봉
+```
 
 ## 실행
 
@@ -119,8 +157,10 @@ src/
   retrieval.py      MegaLoc/CosPlace 전역 검색
   pnp.py            PnP+RANSAC+VVS
   build_db.py       DB 구축 파이프라인
-  localize.py       쿼리 1장 → 6DOF
-  eval.py           held-out / 크로스-run 평가
+  localize.py       쿼리 1장 → 6DOF (후보별 PnP + 가이드 재매칭)
+  reloc.py          사용자 API (Relocalizer) + CLI
+  server.py         FastAPI HTTP 서버 (/localize, /health)
+  eval.py           held-out / 크로스-run 평가 (쿼리 다중 뷰)
 tests/              단위 테스트 (합성 데이터 기반, 20개)
 tools/              진단·시각화 도구
 ```
@@ -129,5 +169,8 @@ tools/              진단·시각화 도구
 
 - [x] M1-M3: bag 리더 · 삼각측량 3D 태깅 · 모델 래퍼
 - [x] M4: held-out 평가 94.1% / 크로스-run 검증
-- [ ] 쿼리 측 다중 뷰 (반환률 개선)
-- [ ] M5: 자체 LiDAR SLAM 세션 포즈로 DB 구축 (PoseProvider 교체만으로)
+- [x] 쿼리 측 다중 뷰 + 가이드 재매칭
+- [x] 측위 API (Python / CLI / HTTP, 클라이언트 캘리브 지원)
+- [ ] M5: LiDAR SLAM 연동 — SLAM 궤적(TUM)으로 DB 구축(PoseProvider 교체),
+      역방향으로 시각 루프클로저 제안을 SLAM 포즈그래프에 공급
+- [ ] 다중 세션 DB 병합 (시점 다양성 축적 → 경로 밖 측위 강화)

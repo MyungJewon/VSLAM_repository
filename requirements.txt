@@ -10,3 +10,6 @@ tqdm
 kornia
 huggingface_hub
 safetensors
+fastapi
+uvicorn
+python-multipart

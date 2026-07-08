@@ -31,9 +31,13 @@ def rot_err_deg(Ra, Rb):
 def main(cfg_path='config.yaml', limit=0, query_bag=None, query_gt=None):
     cfg = yaml.safe_load(open(cfg_path))
     calib = load_kalibr(cfg['calib']['kalibr_yaml'], cfg['calib']['cam'])
-    rect = Rectifier(calib['K'], calib['D'], calib['size'],
-                     out_size=tuple(cfg['calib']['rect_size']),
-                     fov_scale=cfg['calib']['fov_scale'])
+    # 쿼리도 다중 뷰: 좌/정면/우 각각 시도 후 인라이어 최다 뷰 채택
+    q_yaws = cfg['calib'].get('query_view_yaws',
+                              cfg['calib'].get('view_yaws', [0]))
+    rects = [Rectifier(calib['K'], calib['D'], calib['size'],
+                       out_size=tuple(cfg['calib']['rect_size']),
+                       fov_scale=cfg['calib']['fov_scale'], yaw_deg=y)
+             for y in q_yaws]
     gt = GTPoseProvider(query_gt or cfg['gt_path'])
     loc = Localizer(cfg['db_dir'], XFeat(), Retrieval(cfg['retrieval_model']),
                     k=cfg['top_k'])
@@ -60,8 +64,14 @@ def main(cfg_path='config.yaml', limit=0, query_bag=None, query_gt=None):
         T_gt = gt.pose_at(e['t'] + calib['timeshift'])
         if T_gt is None:
             continue
-        img = rect.rectify(cv2.imread(e['path']))
-        r = loc.localize(img)
+        raw = cv2.imread(e['path'])
+        r = None
+        for rect in rects:                      # 뷰별 시도, 인라이어 최다 채택
+            ri = loc.localize(rect.rectify(raw))
+            if ri and (r is None or ri['inliers'] > r['inliers']):
+                # 뷰 포즈 → 실제 카메라(cam0) 포즈로 환원
+                ri['T_wc'] = ri['T_wc'] @ np.linalg.inv(rect.T_cam_view)
+                r = ri
         if r is None:
             results.append((e['t'], np.inf, np.inf, 0))
             records.append((e['t'], *T_gt[:3, 3], np.nan, np.nan, np.nan, 0))
