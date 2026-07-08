@@ -1,0 +1,21 @@
+# Hilti-Trimble 2026 — floor_2 run_1 (플랜 C: GT 포즈 + 삼각측량 태깅)
+bag_path: "data/rosbag1"                     # ROS2 폴더 (metadata.yaml 포함)
+image_topic: "/cam0/image_raw/compressed"
+gt_path: "data/rosbag1/floor_2_2025-10-28_run_1.txt"   # TUM, cam0→map (T_world_cam)
+
+calib:
+  kalibr_yaml: "data/rosbag1/kalibr_imucam_chain.yaml"
+  cam: "cam0"
+  # 피시아이 rectify 설정 — K는 런타임에 Rectifier가 계산 (K_new)
+  rect_size: [800, 800]
+  fov_scale: 0.5
+
+retrieval_model: "megaloc"    # megaloc | cosplace(경량 폴백)
+top_k: 5
+keyframe_stride: 10           # 30Hz라 10프레임(=3Hz)마다 키프레임. 짝수번째=DB, 홀수번째=쿼리
+triangulation:
+  pair_gap: 1                 # 인접 키프레임 (i, i+1)로 삼각측량
+  min_baseline: 0.05
+  max_reproj_px: 2.0
+  max_depth: 50.0
+db_dir: "db"

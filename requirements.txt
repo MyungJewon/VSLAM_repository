@@ -1,0 +1,12 @@
+torch
+torchvision
+opencv-python
+numpy
+scipy
+rosbags
+pyyaml
+pytest
+tqdm
+kornia
+huggingface_hub
+safetensors

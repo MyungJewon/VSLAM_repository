@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+db/
+data/
+.venv/
+.DS_Store
+lift3d_overlay.png
