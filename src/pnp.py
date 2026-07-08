@@ -20,6 +20,11 @@ def solve_pnp(pts2d, pts3d, K, dist, min_inliers: int = MIN_INLIERS):
         flags=cv2.SOLVEPNP_SQPNP)
     if not ok or inl is None or len(inl) < min_inliers:
         return None
+    # 인라이어만으로 반복 정밀화 (RANSAC 결과는 최소셋 기반이라 미세 오차 잔존)
+    idx = inl.ravel()
+    rvec, tvec = cv2.solvePnPRefineVVS(
+        np.asarray(pts3d, np.float64)[idx], np.asarray(pts2d, np.float64)[idx],
+        np.asarray(K, np.float64), dist, rvec, tvec)
     T = np.eye(4)
     T[:3, :3] = cv2.Rodrigues(rvec)[0]
     T[:3, 3] = tvec.ravel()

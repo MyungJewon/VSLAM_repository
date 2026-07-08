@@ -8,7 +8,7 @@ import numpy as np
 def triangulate_pairs(kpts_a, kpts_b, K, T_wc_a, T_wc_b,
                       min_baseline: float = 0.05,
                       max_reproj_px: float = 2.0,
-                      max_depth: float = 50.0):
+                      max_depth_ratio: float = 50.0):
     """매칭된 픽셀쌍을 월드 3D로 삼각측량.
 
     kpts_a/b: (N,2) 매칭된 픽셀 (왜곡 보정된 핀홀 좌표 기준)
@@ -19,7 +19,9 @@ def triangulate_pairs(kpts_a, kpts_b, K, T_wc_a, T_wc_b,
       · 두 카메라 간 거리 < min_baseline (시차 부족 → 깊이 불확실)이면 전체 무효
       · 어느 한쪽 카메라 뒤(z<=0)에 놓이는 점
       · 재투영 오차 > max_reproj_px (잘못된 매칭)
-      · 깊이 > max_depth (원거리 = 시차 미미 → 불확실)
+      · 깊이 > max_depth_ratio × baseline — 깊이 오차는 depth²/baseline에
+        비례하므로 절대 깊이가 아닌 베이스라인 대비 상대 게이트를 쓴다.
+        도보(0.3m)면 ~15m, 차량(3m)이면 ~150m 허용 → 실내외 겸용.
     """
     kpts_a = np.asarray(kpts_a, float)
     kpts_b = np.asarray(kpts_b, float)
@@ -48,6 +50,7 @@ def triangulate_pairs(kpts_a, kpts_b, K, T_wc_a, T_wc_b,
     def cam_z(T_cw, pts):
         return (T_cw[:3, :3] @ pts.T).T[:, 2] + T_cw[2, 3]
 
+    max_depth = max_depth_ratio * baseline
     za, zb = cam_z(T_cw_a, Xw), cam_z(T_cw_b, Xw)
     ok &= (za > 0.1) & (zb > 0.1) & (za < max_depth) & (zb < max_depth)
 
@@ -63,3 +66,32 @@ def triangulate_pairs(kpts_a, kpts_b, K, T_wc_a, T_wc_b,
     pts3d[ok] = Xw[ok]
     valid = ok
     return pts3d, valid
+
+
+def merge_multiview(estimates, cam_center,
+                    abs_tol: float = 0.05, rel_tol: float = 0.03):
+    """같은 특징점을 여러 쌍에서 삼각측량한 결과를 일관성 검사 후 병합.
+
+    estimates: {kpt_idx: [3D점, ...]} — 쌍마다 얻은 추정 목록
+    cam_center: 기준 프레임 카메라 위치 (허용오차를 깊이에 비례시키는 데 사용)
+    반환: (kpt_indices (M,), pts3d (M,3))
+
+    추정이 2개 이상이면 서로 abs_tol + rel_tol×깊이 이내일 때만 채택(평균).
+    불일치 = 잘못된 매칭이나 깊이 오차 → 버림. 추정 1개는 그대로 사용.
+    """
+    idxs, pts = [], []
+    for k, ests in estimates.items():
+        if not ests:
+            continue
+        if len(ests) == 1:
+            idxs.append(k)
+            pts.append(ests[0])
+            continue
+        E = np.asarray(ests)
+        depth = np.linalg.norm(E.mean(0) - cam_center)
+        tol = abs_tol + rel_tol * depth
+        spread = np.linalg.norm(E - E.mean(0), axis=1).max()
+        if spread < tol:
+            idxs.append(k)
+            pts.append(E.mean(0))
+    return np.array(idxs, int), (np.array(pts) if pts else np.zeros((0, 3)))

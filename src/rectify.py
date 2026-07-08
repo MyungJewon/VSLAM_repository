@@ -27,16 +27,26 @@ class Rectifier:
     """equidistant 피시아이 이미지를 핀홀로 펴는 리매퍼 (맵은 1회 계산 후 재사용).
 
     out_size: 펴진 출력 크기. fov_scale: 작을수록 중앙을 좁게(왜곡 적게) 편다.
-    200° 렌즈는 전체를 펼 수 없으므로 중앙 ~90-100°만 사용한다.
+    200° 렌즈는 전체를 펼 수 없으므로 한 뷰당 ~90°만 사용하고,
+    yaw_deg로 좌/우를 향한 가상 뷰를 추가로 펼 수 있다 (다중 뷰 rectify).
     """
 
-    def __init__(self, K, D, in_size, out_size=(800, 800), fov_scale: float = 0.5):
+    def __init__(self, K, D, in_size, out_size=(800, 800), fov_scale: float = 0.5,
+                 yaw_deg: float = 0.0):
         w, h = out_size
         # 새 핀홀 K: 출력 중심 주점 + fov_scale로 초점거리 조절
         f_new = K[0, 0] / fov_scale * (w / in_size[0])
         self.K_new = np.array([[f_new, 0, w / 2], [0, f_new, h / 2], [0, 0, 1]])
+        # 뷰 회전: 카메라 yaw θ 방향이 뷰 정면([0,0,1])이 되도록 R = R_y(-θ)
+        th = np.radians(yaw_deg)
+        R = np.array([[np.cos(th), 0, -np.sin(th)],
+                      [0, 1, 0],
+                      [np.sin(th), 0, np.cos(th)]])
         self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(
-            K, D, np.eye(3), self.K_new, (w, h), cv2.CV_16SC2)
+            K, D, R, self.K_new, (w, h), cv2.CV_16SC2)
+        # 뷰 → 카메라 회전 (가상 카메라 포즈: T_w_view = T_w_cam @ T_cam_view)
+        self.T_cam_view = np.eye(4)
+        self.T_cam_view[:3, :3] = R.T
 
     def rectify(self, img: np.ndarray) -> np.ndarray:
         return cv2.remap(img, self.map1, self.map2, cv2.INTER_LINEAR)

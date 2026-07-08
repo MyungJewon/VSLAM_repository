@@ -47,10 +47,23 @@ def test_bad_match_rejected():
 
 
 def test_far_point_rejected():
-    # max_depth 밖 원거리 점은 불확실 → 기각
+    # 깊이 > ratio×baseline 원거리 점은 불확실 → 기각 (0.5m×50 = 25m 한계)
     pts_w = np.array([[0.0, 0.0, 200.0]])
     T_a = np.eye(4)
     T_b = np.eye(4); T_b[0, 3] = 0.5
     uv_a, uv_b = _project(pts_w, T_a), _project(pts_w, T_b)
-    _, valid = triangulate_pairs(uv_a, uv_b, K, T_a, T_b, max_depth=50.0)
+    _, valid = triangulate_pairs(uv_a, uv_b, K, T_a, T_b, max_depth_ratio=50.0)
     assert not valid.any()
+
+
+def test_merge_multiview_consistency():
+    from src.triangulate import merge_multiview
+    cam = np.zeros(3)
+    ests = {
+        0: [np.array([1.0, 0, 5.0]), np.array([1.01, 0, 5.02])],  # 일치 → 평균
+        1: [np.array([1.0, 0, 5.0]), np.array([3.0, 0, 9.0])],    # 불일치 → 기각
+        2: [np.array([2.0, 1, 4.0])],                             # 단일 → 유지
+    }
+    idxs, pts = merge_multiview(ests, cam)
+    assert set(idxs) == {0, 2}
+    assert np.allclose(pts[list(idxs).index(0)], [1.005, 0, 5.01])

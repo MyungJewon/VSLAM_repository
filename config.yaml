@@ -1,21 +1,27 @@
 # Hilti-Trimble 2026 — floor_2 run_1 (플랜 C: GT 포즈 + 삼각측량 태깅)
 bag_path: "data/rosbag1"                     # ROS2 폴더 (metadata.yaml 포함)
-image_topic: "/cam0/image_raw/compressed"
+image_topic: "/cam0/image_raw/compressed"    # 쿼리(평가)용 카메라
 gt_path: "data/rosbag1/floor_2_2025-10-28_run_1.txt"   # TUM, cam0→map (T_world_cam)
 
 calib:
   kalibr_yaml: "data/rosbag1/kalibr_imucam_chain.yaml"
-  cam: "cam0"
+  cam: "cam0"                 # 쿼리 카메라 (GT 기준 카메라이기도 함)
   # 피시아이 rectify 설정 — K는 런타임에 Rectifier가 계산 (K_new)
   rect_size: [800, 800]
   fov_scale: 0.5
+  view_yaws: [-65, 0, 65]     # 어안 1장 → 좌/정면/우 3개 가상 핀홀 뷰 (DB용)
+
+# DB에 넣을 카메라들. cam1(후방)은 GT(cam0 포즈)에서 외부파라미터로 유도.
+db_cameras:
+  - {cam: "cam0", topic: "/cam0/image_raw/compressed"}
+  - {cam: "cam1", topic: "/cam1/image_raw/compressed"}
 
 retrieval_model: "megaloc"    # megaloc | cosplace(경량 폴백)
 top_k: 5
 keyframe_stride: 10           # 30Hz라 10프레임(=3Hz)마다 키프레임. 짝수번째=DB, 홀수번째=쿼리
 triangulation:
-  pair_gap: 1                 # 인접 키프레임 (i, i+1)로 삼각측량
+  pair_offsets: [-2, -1, 1, 2]  # 다중 쌍 삼각측량 + 일관성 병합
   min_baseline: 0.05
-  max_reproj_px: 2.0
-  max_depth: 50.0
+  max_reproj_px: 1.0
+  max_depth_ratio: 50.0         # 허용 깊이 = ratio × baseline (실내외 겸용)
 db_dir: "db"
