@@ -36,6 +36,8 @@ def extract_images(bag_path: str, topic: str, out_dir: str, stride: int = 1,
             path = out / f'{idx:06d}.png'
             cv2.imwrite(str(path), _decode(msg))
             entries.append({'t': t, 'path': str(path)})
+            if len(entries) % 200 == 0:
+                print(f'  추출 {len(entries)}장...', flush=True)
         return entries
     entries, idx = [], 0
     with AnyReader([Path(bag_path)]) as reader:
@@ -49,5 +51,7 @@ def extract_images(bag_path: str, topic: str, out_dir: str, stride: int = 1,
                 path = out / f'{idx:06d}.png'
                 cv2.imwrite(str(path), _decode(msg))
                 entries.append({'t': t, 'path': str(path)})
+                if len(entries) % 200 == 0:
+                    print(f'  추출 {len(entries)}장...', flush=True)
             idx += 1
     return entries

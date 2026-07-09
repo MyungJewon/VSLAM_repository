@@ -83,7 +83,7 @@ def build(cfg_path: str = 'config.yaml'):
             view_dir.mkdir(parents=True, exist_ok=True)
 
             feats, imgs, poses, paths = [], [], [], []
-            for f in frames:
+            for fi, f in enumerate(frames):
                 img = rect.rectify(cv2.imread(f['path']))
                 p = view_dir / Path(f['path']).name
                 cv2.imwrite(str(p), img)
@@ -91,6 +91,9 @@ def build(cfg_path: str = 'config.yaml'):
                 paths.append(str(p))
                 poses.append(f['T_cam'] @ rect.T_cam_view)
                 feats.append(xf.extract(img))
+                if fi % 200 == 0:
+                    print(f'  [{name} yaw{yaw:+d}] 특징 추출 {fi}/{len(frames)}',
+                          flush=True)
 
             n_tagged = 0
             for i, f in enumerate(frames):
@@ -119,6 +122,9 @@ def build(cfg_path: str = 'config.yaml'):
                 vecs.append(ret.embed(imgs[i]))
                 ts.append(f['t'])
                 n_tagged += len(keep)
+                if i % 200 == 0:
+                    print(f'  [{name} yaw{yaw:+d}] 삼각측량 {i}/{len(frames)}',
+                          flush=True)
             print(f'[{name} yaw{yaw:+d}] 프레임 {len(frames)}, 3D점 {n_tagged}')
             base += len(frames)
 
