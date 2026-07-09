@@ -40,6 +40,17 @@ def build(cfg_path: str = 'config.yaml'):
 
     kalibr = cfg['calib']['kalibr_yaml']
     calib0 = load_kalibr(kalibr, cfg['calib']['cam'])   # GT 기준 카메라(cam0)
+
+    # 궤적 좌표계 → 기준 카메라 변환 (T_cam0_traj).
+    #   생략(기본): 궤적이 이미 cam0 포즈 (Hilti GT 등)
+    #   지정: LiDAR SLAM 궤적처럼 다른 센서 좌표계일 때 —
+    #         T_w_cam0 = T_w_traj · T_cam0_traj⁻¹
+    T_traj_cam0 = np.eye(4)
+    if 'T_cam0_traj' in cfg['calib']:
+        T_traj_cam0 = np.linalg.inv(
+            np.array(cfg['calib']['T_cam0_traj'], float).reshape(4, 4))
+        print(f'궤적→cam0 외부파라미터 적용 (|t|='
+              f'{np.linalg.norm(T_traj_cam0[:3, 3]):.3f}m)')
     cameras = cfg.get('db_cameras',
                       [{'cam': cfg['calib']['cam'],
                         'topic': cfg['image_topic']}])
@@ -59,7 +70,8 @@ def build(cfg_path: str = 'config.yaml'):
         for e in entries:
             T0 = gt.pose_at(e['t'] + calib['timeshift'])
             if T0 is not None:
-                frames.append({**e, 'T_cam': T0 @ T_c0_cX})
+                # 궤적 포즈 → cam0 포즈 → 이 카메라 포즈
+                frames.append({**e, 'T_cam': T0 @ T_traj_cam0 @ T_c0_cX})
         print(f'[{name}] 키프레임 {len(frames)}/{len(entries)}, 뷰 {yaws}')
 
         for yaw in yaws:

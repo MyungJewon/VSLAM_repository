@@ -25,3 +25,8 @@ triangulation:
   max_reproj_px: 1.0
   max_depth_ratio: 50.0         # 허용 깊이 = ratio × baseline (실내외 겸용)
 db_dir: "db"
+
+# LiDAR SLAM 궤적으로 DB를 만들 때: 궤적 좌표계(라이다) → cam0 외부파라미터.
+# 생략하면 궤적을 cam0 포즈로 간주 (GT 모드). 4x4 row-major 16개 값.
+# calib:
+#   T_cam0_traj: [r11,r12,r13,tx, r21,r22,r23,ty, r31,r32,r33,tz, 0,0,0,1]
