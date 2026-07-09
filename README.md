@@ -171,6 +171,8 @@ tools/              진단·시각화 도구
 - [x] M4: held-out 평가 94.1% / 크로스-run 검증
 - [x] 쿼리 측 다중 뷰 + 가이드 재매칭
 - [x] 측위 API (Python / CLI / HTTP, 클라이언트 캘리브 지원)
-- [ ] M5: LiDAR SLAM 연동 — SLAM 궤적(TUM)으로 DB 구축(PoseProvider 교체),
-      역방향으로 시각 루프클로저 제안을 SLAM 포즈그래프에 공급
+- [x] M5: 자체 LiDAR SLAM 궤적으로 DB 구축 — GT 없이 완전 자체 파이프라인.
+      Hilti 2021 exp02에서 held-out 1,716쿼리 성공률 55.5%, **중앙값 7.2cm**
+      (통합 레포: [LIO_VisualReloc](https://github.com/MyungJewon/LIO_VisualReloc))
+- [ ] 시각 루프클로저 제안을 SLAM 포즈그래프에 공급 (매핑 강화)
 - [ ] 다중 세션 DB 병합 (시점 다양성 축적 → 경로 밖 측위 강화)

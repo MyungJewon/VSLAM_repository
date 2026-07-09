@@ -39,6 +39,12 @@ def main(cfg_path='config.yaml', limit=0, query_bag=None, query_gt=None):
                        fov_scale=cfg['calib']['fov_scale'], yaw_deg=y)
              for y in q_yaws]
     gt = GTPoseProvider(query_gt or cfg['gt_path'])
+    # 궤적이 카메라 포즈가 아닐 때(LiDAR SLAM 궤적 등) 카메라 포즈로 환원 —
+    # build_db와 동일한 변환. 없으면 항등 (궤적 = cam0 포즈인 GT 모드).
+    T_traj_cam0 = np.eye(4)
+    if 'T_cam0_traj' in cfg['calib']:
+        T_traj_cam0 = np.linalg.inv(
+            np.array(cfg['calib']['T_cam0_traj'], float).reshape(4, 4))
     loc = Localizer(cfg['db_dir'], XFeat(), Retrieval(cfg['retrieval_model']),
                     k=cfg['top_k'])
 
@@ -64,6 +70,7 @@ def main(cfg_path='config.yaml', limit=0, query_bag=None, query_gt=None):
         T_gt = gt.pose_at(e['t'] + calib['timeshift'])
         if T_gt is None:
             continue
+        T_gt = T_gt @ T_traj_cam0   # 궤적 포즈 → cam0 포즈
         raw = cv2.imread(e['path'])
         r = None
         for rect in rects:                      # 뷰별 시도, 인라이어 최다 채택
